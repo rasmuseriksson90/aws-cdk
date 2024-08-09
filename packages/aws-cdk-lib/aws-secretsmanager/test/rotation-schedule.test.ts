@@ -1,5 +1,6 @@
 import { Match, Template } from '../../assertions';
 import * as ec2 from '../../aws-ec2';
+import { Schedule } from '../../aws-events';
 import * as kms from '../../aws-kms';
 import * as lambda from '../../aws-lambda';
 import * as cdk from '../../core';
@@ -807,4 +808,54 @@ test('automaticallyAfter must not be greater than 1000 days', () => {
     rotationLambda,
     automaticallyAfter: Duration.days(1001),
   })).toThrow(/automaticallyAfter must not be greater than 1000 days, got 1001 days/);
+});
+
+test('automaticallyAfter and scheduleExpression must not be set at the same time', () => {
+  // GIVEN
+  const secret = new secretsmanager.Secret(stack, 'Secret');
+  const rotationLambda = new lambda.Function(stack, 'Lambda', {
+    runtime: lambda.Runtime.NODEJS_LATEST,
+    code: lambda.Code.fromInline('export.handler = event => event;'),
+    handler: 'index.handler',
+  });
+
+  // WHEN
+  // THEN
+  expect(() => new secretsmanager.RotationSchedule(stack, 'RotationSchedule', {
+    secret,
+    rotationLambda,
+    automaticallyAfter: Duration.days(4),
+    scheduleExpression: Schedule.cron({ minute: '0', hour: '9' }),
+  })).toThrow(/Both `automaticallyAfter` and `scheduleExpression` cannot be specified./);
+});
+
+test('scheduleExpression sets scheduleExpression as cron', () => {
+  // GIVEN
+  const secret = new secretsmanager.Secret(stack, 'Secret');
+  const rotationLambda = new lambda.Function(stack, 'Lambda', {
+    runtime: lambda.Runtime.NODEJS_LATEST,
+    code: lambda.Code.fromInline('export.handler = event => event;'),
+    handler: 'index.handler',
+  });
+
+  // WHEN
+  new secretsmanager.RotationSchedule(stack, 'RotationSchedule', {
+    secret,
+    rotationLambda,
+    scheduleExpression: Schedule.cron({ minute: '0', hour: '9' }),
+  });
+
+  // THEN
+  Template.fromStack(stack).hasResourceProperties('AWS::SecretsManager::RotationSchedule', Match.objectEquals({
+    SecretId: { Ref: 'SecretA720EF05' },
+    RotationLambdaARN: {
+      'Fn::GetAtt': [
+        'LambdaD247545B',
+        'Arn',
+      ],
+    },
+    RotationRules: {
+      ScheduleExpression: 'cron(0 9 * * ? *)',
+    },
+  }));
 });

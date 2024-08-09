@@ -48,6 +48,16 @@ export interface RotationScheduleOptions {
   readonly automaticallyAfter?: Duration;
 
   /**
+   * A cron() or rate() expression that defines the schedule for rotating your secret.
+   * Secrets Manager rotation schedules use UTC time zone. Secrets Manager rotates your secret any time during a rotation window
+   *
+   * Either this property or `automaticallyAfter` must be specified, but not both.
+   *
+   * @default Duration.days(30)
+   */
+  readonly scheduleExpression?: Schedule;
+
+  /**
    * Specifies whether to rotate the secret immediately or wait until the next
    * scheduled rotation window.
    *
@@ -92,6 +102,10 @@ export class RotationSchedule extends Resource {
 
     if ((!props.rotationLambda && !props.hostedRotation) || (props.rotationLambda && props.hostedRotation)) {
       throw new Error('One of `rotationLambda` or `hostedRotation` must be specified.');
+    }
+
+    if ((props.automaticallyAfter && props.scheduleExpression)) {
+      throw new Error('Both `automaticallyAfter` and `scheduleExpression` cannot be specified.');
     }
 
     if (props.rotationLambda?.permissionsNode.defaultChild) {
@@ -140,6 +154,8 @@ export class RotationSchedule extends Resource {
         }
         scheduleExpression = Schedule.rate(props.automaticallyAfter).expressionString;
       }
+    } else if (props.scheduleExpression) {
+      scheduleExpression = props.scheduleExpression.expressionString;
     } else {
       scheduleExpression = Schedule.rate(Duration.days(30)).expressionString;
     }
